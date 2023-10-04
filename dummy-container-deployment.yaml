@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dummy-container-deployment
+  labels:
+      app: dummy-app
+      type: dummy
+spec:
+  template:
+    metadata:
+      name: dummy-pod
+      labels:
+          app: dummy-app
+          type: dummy
+    spec:
+      containers:
+      - name: debian-container
+        image: debian:latest
+        command: ["/bin/sh"]
+        args: ["-c", "while true; do echo $((1+1)); sleep 0.01;done"]
+  replicas: 0
+  selector:
+    matchLabels:
+      type: dummy
