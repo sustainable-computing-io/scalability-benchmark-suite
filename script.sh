@@ -64,14 +64,14 @@ function scale_dummy_deployment(){
 
 function save_overhead_data(){
     QUERIES=(
-        "sum%28%0A++rate%28container_cpu_usage_seconds_total%7Bcontainer%3D%22kepler-exporter%22%2Cpod%3D%7E%22kepler-exporter-.*%22%7D%5B2m%5D%29%0A%29" # Kepler cpu
-        "sum%28rate%28container_cpu_usage_seconds_total%7Bcontainer%3D%22prometheus%22%2Cpod%3D%7E%22prometheus.*%22%7D%5B2m%5D%29%29" # Prometheus cpu
-        "sum%28container_memory_usage_bytes%7Bcontainer%3D%22kepler-exporter%22%2Cpod%3D%7E%22kepler-exporter-.*%22%7D%29" # Kepler memory
-        "sum%28container_memory_usage_bytes%7Bcontainer%3D%22prometheus%22%2Cpod%3D%7E%22prometheus-.*%22%7D%29" # Prometheus memory
-        "sum%28rate%28container_network_receive_bytes_total%7Bpod%3D%7E%22kepler-exporter-.*%22%7D%5B2m%5D%29%29" # Kepler network receive
-        "sum%28rate%28container_network_receive_bytes_total%7Bpod%3D%7E%22prometheus-.*%22%7D%5B2m%5D%29%29" # Prometheus network receive
-        "sum%28rate%28container_network_transmit_bytes_total%7Bpod%3D%7E%22kepler-exporter-.*%22%7D%5B2m%5D%29%29" # Kepler network transmit
-        "sum%28rate%28container_network_transmit_bytes_total%7Bpod%3D%7E%22prometheus-.*%22%7D%5B2m%5D%29%29" # Prometheus network transmit
+        "sum(rate(container_cpu_usage_seconds_total{container="kepler-exporter",pod=~"kepler-exporter-.*"}[2m])" # Kepler cpu
+        "sum(rate(container_cpu_usage_seconds_total{container="prometheus",pod=~"prometheus.*"}[2m]))" # Prometheus cpu
+        "sum(container_memory_usage_bytes{container="kepler-exporter",pod=~"kepler-exporter-.*"})" # Kepler memory
+        "sum(container_memory_usage_bytes{container="prometheus",pod=~"prometheus-.*"})" # Prometheus memory
+        "sum(rate(container_network_receive_bytes_total{pod=~"kepler-exporter-.*"}[2m]))" # Kepler network receive
+        "sum(rate(container_network_receive_bytes_total{pod=~"prometheus-.*"}[2m]))" # Prometheus network receive
+        "sum(rate(container_network_transmit_bytes_total{pod=~"kepler-exporter-.*"}[2m]))" # Kepler network transmit
+        "sum(rate(container_network_transmit_bytes_total{pod=~"prometheus-.*"}[2m]))" # Prometheus network transmit
     )
 
     QUERY_NAMES=(
@@ -87,7 +87,7 @@ function save_overhead_data(){
 
     for i in ${!QUERIES[@]}; do
         OUTPUT_FILE=${OUTPUT_DIR}${QUERY_NAMES[$i]}.csv
-        curl "${PROM_SERVER}/api/v1/query_range?query=${QUERIES[$i]}&start=${START}&end=${END}&step=30s" | jq '.data.result[].values' > $OUTPUT_FILE
+        curl -X POST -d "query=${QUERIES[$i]}&start=${START}&end=${END}&step=30s" "${PROM_SERVER}/api/v1/query_range" | jq '.data.result[].values' > $OUTPUT_FILE
     done
 }
 
