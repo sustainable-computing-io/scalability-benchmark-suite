@@ -21,7 +21,7 @@ function prepare_output_dir(){
 
 function validate_cluster(){
     set +e
-    curl -s "${PROM_SERVER}/api/v1/query?query=kepler_container_package_joules_total[5s]" | jq '.data.result[].values' --exit-status > /dev/null
+    curl -s -g "${PROM_SERVER}/api/v1/query?query=kepler_container_package_joules_total[5s]" | jq '.data.result[].values' --exit-status > /dev/null
     EXIT_STATUS=$?
     if [ $EXIT_STATUS -ne 0 ]; then
         if [ $EXIT_STATUS -eq 7 ]; then
