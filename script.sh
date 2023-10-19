@@ -10,6 +10,8 @@ export LAST=${LAST:-40}
 export INCREMENT=${INCREMENT:-10}
 export INCREMENT_INTERVAL=${INCREMENT_INTERVAL:-1200}
 export PROM_SERVER=${PROM_SERVER:-http://localhost:9090}
+export KEPLER_LABEL_MATCHER=${KEPLER_LABEL_MATCHER:-'pod=~"kepler-exporter.*"'}
+export PROMETHUES_LABEL_MATCHER=${PROMETHUES_LABEL_MATCHER:-'pod=~"prometheus.*"'}
 
 function prepare_output_dir(){
     # Prepare output CSV header
@@ -64,14 +66,14 @@ function scale_dummy_deployment(){
 
 function save_overhead_data(){
     QUERIES=(
-        "sum(rate(container_cpu_usage_seconds_total{container="kepler-exporter",pod=~"kepler-exporter-.*"}[2m])" # Kepler cpu
-        "sum(rate(container_cpu_usage_seconds_total{container="prometheus",pod=~"prometheus.*"}[2m]))" # Prometheus cpu
-        "sum(container_memory_usage_bytes{container="kepler-exporter",pod=~"kepler-exporter-.*"})" # Kepler memory
-        "sum(container_memory_usage_bytes{container="prometheus",pod=~"prometheus-.*"})" # Prometheus memory
-        "sum(rate(container_network_receive_bytes_total{pod=~"kepler-exporter-.*"}[2m]))" # Kepler network receive
-        "sum(rate(container_network_receive_bytes_total{pod=~"prometheus-.*"}[2m]))" # Prometheus network receive
-        "sum(rate(container_network_transmit_bytes_total{pod=~"kepler-exporter-.*"}[2m]))" # Kepler network transmit
-        "sum(rate(container_network_transmit_bytes_total{pod=~"prometheus-.*"}[2m]))" # Prometheus network transmit
+        "sum(rate(container_cpu_usage_seconds_total{${KEPLER_LABEL_MATCHER}}[2m])) by (pod)" # Kepler cpu
+        "sum(rate(container_cpu_usage_seconds_total{${PROMETHUES_LABEL_MATCHER}}[2m])) by (pod)" # Prometheus cpu
+        "sum(container_memory_usage_bytes{${KEPLER_LABEL_MATCHER}}) by (pod)" # Kepler memory
+        "sum(container_memory_usage_bytes{${PROMETHUES_LABEL_MATCHER}}) by (pod)" # Prometheus memory
+        "sum(rate(container_network_receive_bytes_total{${KEPLER_LABEL_MATCHER}}[2m])) by (pod)" # Kepler network receive
+        "sum(rate(container_network_receive_bytes_total{${PROMETHUES_LABEL_MATCHER}}[2m])) by (pod)" # Prometheus network receive
+        "sum(rate(container_network_transmit_bytes_total{${KEPLER_LABEL_MATCHER}}[2m])) by (pod)" # Kepler network transmit
+        "sum(rate(container_network_transmit_bytes_total{${PROMETHUES_LABEL_MATCHER}}[2m])) by (pod)" # Prometheus network transmit
     )
 
     QUERY_NAMES=(
