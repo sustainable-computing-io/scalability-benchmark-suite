@@ -12,11 +12,15 @@ export INCREMENT_INTERVAL=${INCREMENT_INTERVAL:-1200}
 export PROM_SERVER=${PROM_SERVER:-http://localhost:9090}
 export KEPLER_LABEL_MATCHER=${KEPLER_LABEL_MATCHER:-'pod=~"kepler-exporter.*"'}
 export PROMETHUES_LABEL_MATCHER=${PROMETHUES_LABEL_MATCHER:-'pod=~"prometheus.*"'}
+export HOURS_TO_SAVE=${HOURS:-1}
 
 function prepare_output_dir(){
     # Prepare output CSV header
-    export OUTPUT_DIR=${RESULTS_DIR}${EXPERIMENT_DIR_NAME}/$(date -d @${START} +"%Y_%m_%d_%I_%M_%p")/
+    export OUTPUT_DIR=${OUTPUT_DIR:-"${RESULTS_DIR}${EXPERIMENT_DIR_NAME}/$(date -d @${START} +"%Y_%m_%d_%I_%M_%p")/"}
     mkdir -p $OUTPUT_DIR
+}
+
+function create_timestamp_file(){
     export TIMESTAMP_OUTPUT_FILE=${OUTPUT_DIR}timestamps.csv
     echo "Replicas,Start time,End time" > $TIMESTAMP_OUTPUT_FILE
 }
@@ -100,9 +104,21 @@ function run_benchmark(){
 
     prepare_output_dir
 
+    create_timestamp_file
+
     bash -c "$EXPERIMENT_CMD"
 
     END=$(date +%s)
+
+    save_overhead_data
+}
+
+function save_current_overhead(){
+    END=$(date +%s)
+    START=$((END - $((HOURS_TO_SAVE * 3600))))
+
+    export OUTPUT_DIR=${OUTPUT_DIR:-"./_output/overhead-snapshots/$(date -d @${END} +"%Y_%m_%d_%I_%M_%p")/"}
+    prepare_output_dir
 
     save_overhead_data
 }
