@@ -68,6 +68,37 @@ function scale_dummy_deployment(){
     kubectl delete deployment dummy-container-deployment
 }
 
+function scale_cluster(){
+    KEPLER_NODES=($(kubectl get pods -l app.kubernetes.io/name=kepler-exporter -n kepler -o custom-columns="NODE:.spec.nodeName" --no-headers))
+    KEPLER_NODE_COUNT=${#KEPLER_NODES[@]}
+
+    kubectl label nodes $KEPLER_NODES allowkepler=true --overwrite
+
+    # Add nodeselector to Kepler daemonset so that Kepler only deploys on nodes with allowkepler=true
+    kubectl patch daemonset kepler-exporter -n kepler --patch-file restrict-kepler-patch.yaml
+
+    echo "Nodes,Start time,End time" > $TIMESTAMP_OUTPUT_FILE
+
+    COUNT=$INCREMENT
+    for NODE in $KEPLER_NODES
+    do
+        if [ "$COUNT" -eq 0 ]; then
+            COUNT="$INCREMENT"
+            echo -n "${KEPLER_NODE_COUNT},$(date +%s)," >> $TIMESTAMP_OUTPUT_FILE
+            sleep $INCREMENT_INTERVAL
+            echo "$(date +%s)" >> $TIMESTAMP_OUTPUT_FILE
+        fi
+        
+        COUNT=$((COUNT - 1))
+        KEPLER_NODE_COUNT=$((KEPLER_NODE_COUNT - 1))
+    done
+
+    #cleanup
+    PATCH='[{"op": "remove", "path": "/spec/template/spec/nodeSelector"}]'
+    kubectl patch daemonset kepler-exporter -n kepler --type json -p "$PATCH"
+    kubectl label nodes $KEPLER_NODES allowkepler-
+}
+
 function save_overhead_data(){
     QUERIES=(
         "sum(rate(container_cpu_usage_seconds_total{${KEPLER_LABEL_MATCHER}}[2m])) by (pod)" # Kepler cpu
