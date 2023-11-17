@@ -10,6 +10,7 @@ export LAST=${LAST:-40}
 export INCREMENT=${INCREMENT:-10}
 export INCREMENT_INTERVAL=${INCREMENT_INTERVAL:-1200}
 export PROM_SERVER=${PROM_SERVER:-http://localhost:9090}
+export KEPLER_PROM_SERVER=${KEPLER_PROM_SERVER:-${PROM_SERVER}} # Specify if different from default prometheus server
 export KEPLER_LABEL_MATCHER=${KEPLER_LABEL_MATCHER:-'pod=~"kepler-exporter.*"'}
 export PROMETHUES_LABEL_MATCHER=${PROMETHUES_LABEL_MATCHER:-'pod=~"prometheus.*"'}
 export HOURS_TO_SAVE=${HOURS:-1}
@@ -27,11 +28,11 @@ function create_timestamp_file(){
 
 function validate_cluster(){
     set +e
-    curl -s -g "${PROM_SERVER}/api/v1/query?query=kepler_container_package_joules_total[5s]" | jq '.data.result[].values' --exit-status > /dev/null
+    curl -s -g "${KEPLER_PROM_SERVER}/api/v1/query?query=kepler_container_package_joules_total[5s]" | jq '.data.result[].values' --exit-status > /dev/null
     EXIT_STATUS=$?
     if [ $EXIT_STATUS -ne 0 ]; then
         if [ $EXIT_STATUS -eq 7 ]; then
-            echo "Error: Could not reach Prometheus server at ${PROM_SERVER}"
+            echo "Error: Could not reach Kepler Prometheus server at ${KEPLER_PROM_SERVER}"
             echo 'Help: If not using a ClusterIP/NodePort service to expose Prometheus ensure you forward the port. e.g. `kubectl --insecure-skip-tls-verify -n monitoring port-forward service/kube-prom-stack-prometheus-prometheus 9090:9090`'
             echo 'Help: Rerun with `PROM_SERVER=[your Prometheus url] ./script.sh`'
         elif [ $EXIT_STATUS -eq 4 ]; then
@@ -68,35 +69,69 @@ function scale_dummy_deployment(){
     kubectl delete deployment dummy-container-deployment
 }
 
+
+function restrict_kepler_metrics_by_node(){
+    PATCH='[{"op": "add", "path": "/spec/selector/exposenode", "value": "true"}]'
+    kubectl patch service kepler-exporter -n kepler --type json -p "$PATCH" 2>/dev/null
+    # Sleep for Prometheus scrape interval
+    sleep 30
+}
+
+function unrestrict_kepler_metrics_by_node(){
+    PATCH='[{"op": "remove", "path": "/spec/selector/exposenode"}]'
+    kubectl patch service kepler-exporter -n kepler --type json -p "$PATCH" 2>/dev/null
+    # Sleep for Prometheus scrape interval
+    sleep 30
+}
+
+function disable_kepler_pod_sraping(){
+    kubectl label pod $POD exposenode=false --overwrite -n kepler
+    # Sleep for Prometheus scrape interval
+    sleep 30
+}
+
+function record_current_interval(){
+    echo -n "${KEPLER_POD_COUNT},$(date +%s)," >> $TIMESTAMP_OUTPUT_FILE
+
+    sleep $INCREMENT_INTERVAL
+
+    echo "$(date +%s)" >> $TIMESTAMP_OUTPUT_FILE
+}
+
 function scale_cluster(){
-    KEPLER_NODES=($(kubectl get pods -l app.kubernetes.io/name=kepler-exporter -n kepler -o custom-columns="NODE:.spec.nodeName" --no-headers))
-    KEPLER_NODE_COUNT=${#KEPLER_NODES[@]}
+    KEPLER_PODS=($(kubectl get pods -l app.kubernetes.io/name=kepler-exporter -n kepler -o custom-columns="NAME:.metadata.name" --no-headers))
+    KEPLER_POD_COUNT=${#KEPLER_PODS[@]}
 
-    kubectl label nodes $KEPLER_NODES allowkepler=true --overwrite
+    kubectl label pods ${KEPLER_PODS[@]} exposenode="true" --overwrite -n kepler
 
-    # Add nodeselector to Kepler daemonset so that Kepler only deploys on nodes with allowkepler=true
-    kubectl patch daemonset kepler-exporter -n kepler --patch-file restrict-kepler-patch.yaml
+    # Only expose kepler metrics to Prometheus for nodes with a kepler-exporter with the label exposenode="true"
+    restrict_kepler_metrics_by_node
 
     echo "Nodes,Start time,End time" > $TIMESTAMP_OUTPUT_FILE
 
+    # Benchmark the overhead when all nodes are being scraped
+    record_current_interval
+
     COUNT=$INCREMENT
-    for NODE in $KEPLER_NODES
+    for POD in ${KEPLER_PODS[@]}
     do
         if [ "$COUNT" -eq 0 ]; then
             COUNT="$INCREMENT"
-            echo -n "${KEPLER_NODE_COUNT},$(date +%s)," >> $TIMESTAMP_OUTPUT_FILE
-            sleep $INCREMENT_INTERVAL
-            echo "$(date +%s)" >> $TIMESTAMP_OUTPUT_FILE
+
+            disable_kepler_pod_sraping
+            
+            record_current_interval
         fi
-        
         COUNT=$((COUNT - 1))
-        KEPLER_NODE_COUNT=$((KEPLER_NODE_COUNT - 1))
+        KEPLER_POD_COUNT=$((KEPLER_POD_COUNT - 1))
     done
 
+    # Benchmark the overhead when all kepler metrics aren't exposed for any nodes
+    record_current_interval
+
     #cleanup
-    PATCH='[{"op": "remove", "path": "/spec/template/spec/nodeSelector"}]'
-    kubectl patch daemonset kepler-exporter -n kepler --type json -p "$PATCH"
-    kubectl label nodes $KEPLER_NODES allowkepler-
+    unrestrict_kepler_metrics_by_node
+    kubectl label pods ${KEPLER_PODS[@]} exposenode- -n kepler
 }
 
 function save_overhead_data(){
