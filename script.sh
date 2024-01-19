@@ -138,12 +138,12 @@ function save_overhead_data(){
     # The plotting functions expect a single timeseries
     # Wrapping queries in a final aggregation function guarantees this
     QUERIES=(
-        "max(avg(rate(container_cpu_usage_seconds_total{${KEPLER_LABEL_MATCHER}, container=\"kepler-exporter\"}[2m])) by (pod))" # max Kepler cpu
-        "avg(avg(rate(container_cpu_usage_seconds_total{${KEPLER_LABEL_MATCHER}, container=\"kepler-exporter\"}[2m])) by (pod))" # average Kepler cpu
-        "avg(rate(container_cpu_usage_seconds_total{${PROMETHEUS_LABEL_MATCHER}, container=\"prometheus\"}[2m]))" # average Prometheus cpu (in case of multiple Prometheus instances)
-        "max(avg(rate(container_memory_usage_bytes{${KEPLER_LABEL_MATCHER}, container=\"kepler-exporter\"}[2m])) by (pod))" # max Kepler memory
-        "avg(avg(rate(container_memory_usage_bytes{${KEPLER_LABEL_MATCHER}, container=\"kepler-exporter\"}[2m])) by (pod))" # average Kepler memory
-        "avg(rate(container_memory_usage_bytes{${PROMETHEUS_LABEL_MATCHER}, container=\"prometheus\"}[2m]))" # average Prometheus memory (in case of multiple Prometheus instances)
+        "max(avg(rate(container_cpu_usage_seconds_total{${KEPLER_LABEL_MATCHER}}[2m])) by (pod))" # max Kepler cpu
+        "avg(avg(rate(container_cpu_usage_seconds_total{${KEPLER_LABEL_MATCHER}}[2m])) by (pod))" # average Kepler cpu
+        "avg(rate(container_cpu_usage_seconds_total{${PROMETHEUS_LABEL_MATCHER}}[2m]))" # average Prometheus cpu (in case of multiple Prometheus instances)
+        "max(avg(rate(container_memory_usage_bytes{${KEPLER_LABEL_MATCHER}}[2m])) by (pod))" # max Kepler memory
+        "avg(avg(rate(container_memory_usage_bytes{${KEPLER_LABEL_MATCHER}}[2m])) by (pod))" # average Kepler memory
+        "avg(rate(container_memory_usage_bytes{${PROMETHEUS_LABEL_MATCHER}}[2m]))" # average Prometheus memory (in case of multiple Prometheus instances)
         "max(rate(container_network_receive_bytes_total{${KEPLER_LABEL_MATCHER}}[2m]))" # max Kepler network receive
         "avg(rate(container_network_receive_bytes_total{${KEPLER_LABEL_MATCHER}}[2m]))" # avg Kepler network receive
         "avg(rate(container_network_receive_bytes_total{${PROMETHEUS_LABEL_MATCHER}}[2m]))" # Prometheus network receive
@@ -164,7 +164,7 @@ function save_overhead_data(){
         "avg-prometheus-network-receive"
         "max-kepler-network-transmit"
         "avg-kepler-network-transmit"
-        "avgprometheus-network-transmit"
+        "avg-prometheus-network-transmit"
     )
 
     for i in ${!QUERIES[@]}; do
