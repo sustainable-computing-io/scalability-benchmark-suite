@@ -12,7 +12,8 @@ export INCREMENT_INTERVAL=${INCREMENT_INTERVAL:-1200}
 export PROM_SERVER=${PROM_SERVER:-http://localhost:9090}
 export KEPLER_PROM_SERVER=${KEPLER_PROM_SERVER:-${PROM_SERVER}} # Specify if different from default prometheus server
 export KEPLER_LABEL_MATCHER=${KEPLER_LABEL_MATCHER:-'pod=~"kepler-exporter.*"'}
-export PROMETHEUS_LABEL_MATCHER=${PROMETHEUS_LABEL_MATCHER:-'pod=~"prometheus.*"'}
+export KEPLER_PROM_LABEL_MATCHER=${KEPLER_PROM_LABEL_MATCHER:-'pod=~"prometheus.*"'} # Should only match prometheus instance targeting Kepler
+export MULTIPLE_KEPLER_PROM_INSTANCES=${MULTIPLE_KEPLER_PROM_INSTANCES:-false}
 export HOURS_TO_SAVE=${HOURS:-1}
 
 function prepare_output_dir(){
@@ -41,6 +42,21 @@ function validate_cluster(){
         fi
         exit $EXIT_STATUS
     fi
+
+    CURL_OUTPUT=$(curl -s -g "${PROM_SERVER}/api/v1/query?query=container_cpu_usage_seconds_total{${KEPLER_PROM_LABEL_MATCHER},container=\"prometheus\"}")
+    MATCHING_PROM_INSTANCE_COUNT=$(echo $CURL_OUTPUT | jq '.data.result | length')
+    MATCHING_PROM_INSTANCES=$(echo $CURL_OUTPUT | jq '.data.result[].metric.pod')
+    if [ $MATCHING_PROM_INSTANCE_COUNT -eq 1 ]; then
+        echo -e "Measuring overhead of a single Prometheus pod: ${MATCHING_PROM_INSTANCES}"
+    elif [ "${MULTIPLE_KEPLER_PROM_INSTANCES,,}" = true ]; then
+        echo -e "Measuring average overhead of multiple Prometheus pods:\n${MATCHING_PROM_INSTANCES}"
+    else
+        echo -e "Error: Multiple Prometheus pods are being targeted:\n${MATCHING_PROM_INSTANCES}"
+        echo "Help: If intentionally scraping Kepler metrics from multiple Prometheus instances, set MULTIPLE_KEPLER_PROM_INSTANCES=true"
+        echo "Help: If more Prometheus instances are being targeted than desired set KEPLER_PROM_LABEL_MATCHER (currently KEPLER_PROM_LABEL_MATCHER='${KEPLER_PROM_LABEL_MATCHER}') to only match desired Prometheus pod(s)"
+        exit 1
+    fi
+
     set -e
 }
 
@@ -140,16 +156,16 @@ function save_overhead_data(){
     QUERIES=(
         "max(avg(rate(container_cpu_usage_seconds_total{${KEPLER_LABEL_MATCHER}}[2m])) by (pod))" # max Kepler cpu
         "avg(avg(rate(container_cpu_usage_seconds_total{${KEPLER_LABEL_MATCHER}}[2m])) by (pod))" # average Kepler cpu
-        "avg(rate(container_cpu_usage_seconds_total{${PROMETHEUS_LABEL_MATCHER}}[2m]))" # average Prometheus cpu (in case of multiple Prometheus instances)
+        "avg(rate(container_cpu_usage_seconds_total{${KEPLER_PROM_LABEL_MATCHER}}[2m]))" # average Prometheus cpu (in case of multiple Prometheus instances)
         "max(avg(rate(container_memory_usage_bytes{${KEPLER_LABEL_MATCHER}}[2m])) by (pod))" # max Kepler memory
         "avg(avg(rate(container_memory_usage_bytes{${KEPLER_LABEL_MATCHER}}[2m])) by (pod))" # average Kepler memory
-        "avg(rate(container_memory_usage_bytes{${PROMETHEUS_LABEL_MATCHER}}[2m]))" # average Prometheus memory (in case of multiple Prometheus instances)
+        "avg(rate(container_memory_usage_bytes{${KEPLER_PROM_LABEL_MATCHER}}[2m]))" # average Prometheus memory (in case of multiple Prometheus instances)
         "max(rate(container_network_receive_bytes_total{${KEPLER_LABEL_MATCHER}}[2m]))" # max Kepler network receive
         "avg(rate(container_network_receive_bytes_total{${KEPLER_LABEL_MATCHER}}[2m]))" # avg Kepler network receive
-        "avg(rate(container_network_receive_bytes_total{${PROMETHEUS_LABEL_MATCHER}}[2m]))" # Prometheus network receive
+        "avg(rate(container_network_receive_bytes_total{${KEPLER_PROM_LABEL_MATCHER}}[2m]))" # Prometheus network receive
         "max(rate(container_network_transmit_bytes_total{${KEPLER_LABEL_MATCHER}}[2m]))" # max Kepler network transmit
         "avg(rate(container_network_transmit_bytes_total{${KEPLER_LABEL_MATCHER}}[2m]))" # avg Kepler network transmit
-        "avg(rate(container_network_receive_bytes_total{${PROMETHEUS_LABEL_MATCHER}}[2m]))" # Prometheus network transmit
+        "avg(rate(container_network_receive_bytes_total{${KEPLER_PROM_LABEL_MATCHER}}[2m]))" # Prometheus network transmit
     )
 
     QUERY_NAMES=(
