@@ -1,6 +1,18 @@
 #! /bin/bash
 set -e
 set -o pipefail
+trap ctrl_c INT
+
+# If an interrupt signal is received, perform the appropriate cleanup
+function ctrl_c() {
+    if grep -q "scale_dummy_deployment" <<< "$EXPERIMENT_CMD"; then
+        scale_dummy_deployment_cleanup
+    fi
+    if grep -q "scale_cluster" <<< "$EXPERIMENT_CMD"; then
+        scale_cluster_cleanup
+    fi
+    exit 0
+}
 
 export RESULTS_DIR=${RESULTS_DIR:-'./_output/results/'}
 export EXPERIMENT_CMD=${EXPERIMENT_CMD:-'./script.sh scale_dummy_deployment'}
@@ -82,7 +94,12 @@ function scale_dummy_deployment(){
         echo "$(date +%s)" >> $TIMESTAMP_OUTPUT_FILE
     done
 
-    kubectl delete deployment dummy-container-deployment
+    # Cleanup
+    scale_dummy_deployment_cleanup
+}
+
+function scale_dummy_deployment_cleanup(){
+    kubectl delete deployment dummy-container-deployment --ignore-not-found
 }
 
 
@@ -96,8 +113,6 @@ function restrict_kepler_metrics_by_node(){
 function unrestrict_kepler_metrics_by_node(){
     PATCH='[{"op": "remove", "path": "/spec/selector/exposenode"}]'
     kubectl patch service kepler-exporter -n kepler --type json -p "$PATCH" 2>/dev/null
-    # Sleep for Prometheus scrape interval
-    sleep 30
 }
 
 function enable_kepler_pod_sraping(){
@@ -145,9 +160,15 @@ function scale_cluster(){
     # Benchmark the overhead when all kepler metrics aren't exposed for any nodes
     record_current_interval
 
-    #cleanup
+    # Cleanup
+    scale_cluster_cleanup
+}
+
+function scale_cluster_cleanup(){
     unrestrict_kepler_metrics_by_node
-    kubectl label pods ${KEPLER_PODS[@]} exposenode- -n kepler
+    if [ -n "${KEPLER_PODS}" ]; then
+        kubectl label pods ${KEPLER_PODS[@]} exposenode- -n kepler
+    fi
 }
 
 function save_overhead_data(){
