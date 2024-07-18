@@ -41,6 +41,7 @@ function create_timestamp_file(){
 
 function validate_cluster(){
     set +e
+    # Check if Prometheus is scraping Kepler metrics
     curl -s -g "${KEPLER_PROM_SERVER}/api/v1/query?query=kepler_container_package_joules_total" | jq '.data.result[].value' --exit-status > /dev/null
     EXIT_STATUS=$?
     if [ $EXIT_STATUS -ne 0 ]; then
@@ -55,7 +56,22 @@ function validate_cluster(){
         exit $EXIT_STATUS
     fi
 
-    CURL_OUTPUT=$(curl -s -g "${PROM_SERVER}/api/v1/query?query=container_cpu_usage_seconds_total{${KEPLER_PROM_LABEL_MATCHER},container=\"prometheus\"}")
+    # Check if Prometheus is collecting metrics on the Kepler pod(s)
+    CURL_OUTPUT=$(curl -s -g "${PROM_SERVER}/api/v1/query?query=container_cpu_usage_seconds_total{${KEPLER_LABEL_MATCHER}}")
+    MATCHING_KEPLER_INSTANCE_COUNT=$(echo $CURL_OUTPUT | jq '.data.result | length')
+    MATCHING_KEPLER_INSTANCES=$(echo $CURL_OUTPUT | jq '.data.result[].metric.pod')
+    if [ $MATCHING_KEPLER_INSTANCE_COUNT -eq 0 ]; then
+        echo "Error: No Kepler pods are being targeted"
+        echo "Help: Set KEPLER_LABEL_MATCHER (currently KEPLER_LABEL_MATCHER='${KEPLER_LABEL_MATCHER}') to match your desired Kepler pod(s)"
+        exit 1
+    elif [ $MATCHING_KEPLER_INSTANCE_COUNT -eq 1 ]; then
+        echo "Measuring overhead of a single Kepler pod: ${MATCHING_KEPLER_INSTANCES}"
+    else
+        echo -e "Measuring average overhead of multiple Kepler pods:\n${MATCHING_KEPLER_INSTANCES}"
+    fi
+
+    # Check if Prometheus is collecting metrics on the Prometheus pod(s) scraping Kepler metrics
+    CURL_OUTPUT=$(curl -s -g "${PROM_SERVER}/api/v1/query?query=container_cpu_usage_seconds_total{${KEPLER_PROM_LABEL_MATCHER}}")
     MATCHING_PROM_INSTANCE_COUNT=$(echo $CURL_OUTPUT | jq '.data.result | length')
     MATCHING_PROM_INSTANCES=$(echo $CURL_OUTPUT | jq '.data.result[].metric.pod')
     if [ $MATCHING_PROM_INSTANCE_COUNT -eq 0 ]; then
