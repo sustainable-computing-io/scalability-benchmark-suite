@@ -41,7 +41,7 @@ function create_timestamp_file(){
 
 function validate_cluster(){
     set +e
-    curl -s -g "${KEPLER_PROM_SERVER}/api/v1/query?query=kepler_container_package_joules_total[5s]" | jq '.data.result[].values' --exit-status > /dev/null
+    curl -s -g "${KEPLER_PROM_SERVER}/api/v1/query?query=kepler_container_package_joules_total" | jq '.data.result[].value' --exit-status > /dev/null
     EXIT_STATUS=$?
     if [ $EXIT_STATUS -ne 0 ]; then
         if [ $EXIT_STATUS -eq 7 ]; then
